@@ -1,0 +1,25 @@
+{
+  "name": "localsearch-mcp",
+  "version": "1.0.0",
+  "description": "MCP Server wrapper for LocalSearch API - provides code search tools to Claude",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "localsearch-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "keywords": ["mcp", "localsearch", "code-search", "claude"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.6.0",
+    "axios": "^1.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "typescript": "^5.3.3"
+  }
+}
