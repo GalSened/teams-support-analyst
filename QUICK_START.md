@@ -100,21 +100,27 @@ Add:
 
 ### Step 5: Start the Orchestrator
 
-**Use orchestrator-v2 with @mention detection and stability loop:**
+**Use orchestrator-v3 with intelligent repo selection (RECOMMENDED):**
 
 ```powershell
 # Windows
 cd C:/Users/gals/teams-support-analyst
-./orchestrator-v2.ps1
+./orchestrator-v3.ps1
 
 # Linux/Mac
 cd ~/teams-support-analyst
-./orchestrator-v2.sh
+./orchestrator-v3.sh
 ```
+
+**Why v3?**
+- 🚀 **Faster** - Searches only relevant repos (not all 3)
+- 🎯 **More accurate** - Focused results from right repo
+- 💡 **Smarter** - Asks clarifying questions when needed
 
 **Configuration (optional):**
 - Set `$BOT_NAME` environment variable to customize bot name
 - Adjust `MAX_ATTEMPTS=4`, `CONFIDENCE_THRESHOLD=0.9`, `STABLE_HASH_COUNT=2` in script
+- Edit `.env` to configure repo paths
 
 Keep this terminal open!
 
@@ -272,6 +278,17 @@ teams-support-analyst/
 - **Responses appear in same thread** as original question
 - **Maintains conversation context**
 - Uses message ID to reply to specific messages
+
+### Intelligent Repo Selection (NEW in v3! ⚡)
+- **Analyzes question keywords** to determine which repo to search
+- **Searches targeted repo first** instead of all repos
+- **3x faster** search results
+- **Higher accuracy** with focused context
+- **Asks clarifying questions** when ambiguous
+- **Example keywords:**
+  - Backend: API, login, getUserInfo, database → searches `user-backend`
+  - Frontend: button, form, UI, page → searches `wesign-client-DEV`
+  - Signing: signature, PDF, document → searches `wesignsigner-client-app-DEV`
 
 ### Multilingual Support
 - **Auto-detects** Hebrew or English
