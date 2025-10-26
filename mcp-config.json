@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "local-search": {
+      "command": "node",
+      "args": [
+        "C:\\Users\\gals\\teams-support-analyst\\local-search-api\\mcp-server.js"
+      ],
+      "env": {
+        "LOCALSEARCH_API_URL": "http://localhost:3001"
+      }
+    }
+  }
+}

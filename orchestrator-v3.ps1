@@ -1,39 +1,56 @@
-# Teams Support Analyst - Orchestrator Script v3 (PowerShell)
+# Teams Support Analyst - Orchestrator Script v3 (PowerShell) - Group Chat Edition
 #
 # This script:
-# 1. Polls Microsoft Teams for new messages (via Teams MCP)
+# 1. Polls Microsoft Teams GROUP CHAT for new messages (via Graph API)
 # 2. ONLY responds when bot is @mentioned
 # 3. Uses stability loop for iterative refinement
 # 4. Replies in same thread
 # 5. **NEW: Intelligent repo selection for faster, more accurate analysis**
 # 6. Invokes Claude Code to analyze each message (using LocalSearch MCP)
-# 7. Sends the response back to Teams (via Teams MCP)
+# 7. Sends the response back to Teams group chat (via Graph API)
 #
 # Requirements:
-# - Claude Desktop with Teams MCP and LocalSearch MCP configured
+# - Microsoft Graph API authentication token (in C:\Users\gals\.msgraph-mcp-auth.json)
 # - LocalSearch API running on http://localhost:3001
 # - claude CLI in PATH
+# - TEAMS_CHAT_ID environment variable set
+
+# Import Graph API helpers
+. "$PSScriptRoot\graph-api-helpers.ps1"
 
 # Configuration
 $POLL_INTERVAL = 10  # seconds
 $STATE_FILE = "./state/last_message_id.txt"
 $ANALYSIS_STATE_FILE = "./state/analysis_state.json"
 $LOG_FILE = "./logs/orchestrator.log"
-$CHANNEL_NAME = if ($env:TEAMS_CHANNEL_NAME) { $env:TEAMS_CHANNEL_NAME } else { "General" }
+$CHAT_ID = if ($env:TEAMS_CHAT_ID) { $env:TEAMS_CHAT_ID } else { "" }
+$CHAT_NAME = if ($env:TEAMS_CHANNEL_NAME) { $env:TEAMS_CHANNEL_NAME } else { "support" }
 $BOT_NAME = if ($env:BOT_NAME) { $env:BOT_NAME } else { "SupportBot" }
 
-# Analysis settings (Stability Loop)
-$MAX_ATTEMPTS = 4
-$CONFIDENCE_THRESHOLD = 0.9
+# Analysis settings (Stability Loop - OPTIMIZED for speed)
+$MAX_ATTEMPTS = 2  # Reduced from 4 for faster responses
+$CONFIDENCE_THRESHOLD = 0.75  # Lowered from 0.9 for quicker exits
 $STABLE_HASH_COUNT = 2
 
 # Initialize
-Write-Host "=== Teams Support Analyst Orchestrator v3 Starting ===" -ForegroundColor Cyan
+Write-Host "=== Teams Support Analyst Orchestrator v4 (Humanized Edition) Starting ===" -ForegroundColor Cyan
+Write-Host "🤖 Meet Alex: Your friendly senior dev teammate!" -ForegroundColor Green
 New-Item -ItemType Directory -Force -Path (Split-Path $STATE_FILE) | Out-Null
 New-Item -ItemType Directory -Force -Path (Split-Path $LOG_FILE) | Out-Null
-Write-Host "Bot Name: $BOT_NAME" -ForegroundColor Yellow
+
+# Validate CHAT_ID
+if ([string]::IsNullOrWhiteSpace($CHAT_ID)) {
+    Write-Host "ERROR: TEAMS_CHAT_ID environment variable is not set!" -ForegroundColor Red
+    Write-Host "Please set it in the .env file or environment." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "Bot Name: $BOT_NAME (Persona: Alex)" -ForegroundColor Yellow
+Write-Host "Group Chat: $CHAT_NAME (ID: $CHAT_ID)" -ForegroundColor Yellow
 Write-Host "Will only respond to @mentions" -ForegroundColor Yellow
-Write-Host "ENHANCED: Intelligent repo selection enabled" -ForegroundColor Green
+Write-Host "✨ NEW: Fast-fail on access errors (MAX_ATTEMPTS: $MAX_ATTEMPTS)" -ForegroundColor Green
+Write-Host "✨ NEW: Humanized responses with empathy & clarity" -ForegroundColor Green
+Write-Host "✨ NEW: No permission requests in chat!" -ForegroundColor Green
 
 # Logging function
 function Write-Log {
@@ -165,6 +182,28 @@ function Get-HypothesisFromAnalysis {
     return $AnalysisText.Substring(0, [Math]::Min(100, $AnalysisText.Length))
 }
 
+# Function to detect access/permission errors (FAST-FAIL)
+function Test-AccessError {
+    param([string]$AnalysisText, [string]$Hypothesis)
+
+    $accessErrorPatterns = @(
+        "cannot access",
+        "permission denied",
+        "outside accessible directory",
+        "repository paths are outside",
+        "don't have permission",
+        "cannot perform analysis"
+    )
+
+    foreach ($pattern in $accessErrorPatterns) {
+        if ($AnalysisText -match $pattern -or $Hypothesis -match $pattern) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
 # Function to analyze message with Claude Code (v3: ENHANCED with intelligent repo selection)
 function Invoke-Analysis {
     param(
@@ -193,86 +232,68 @@ Instructions:
     }
 
     $prompt = @"
-You are a support analyst for our WeSign codebase.
+You are Alex, a senior developer on the WeSign support team. You're helpful, friendly, and patient.
+
+CRITICAL RULES:
+- NEVER ask the user for permissions or directory access in your response
+- NEVER say things like "I need your permission to access..."
+- If you can't access code, provide general guidance and ask clarifying questions instead
+- Be conversational and helpful, like talking to a teammate
 
 User question ($Language): $MessageText
 
 $attemptInfo
 
-Available Repositories:
-- **user-backend** (C:/Users/gals/source/repos/user-backend): Backend API, authentication, database, server logic, getUserInfo, login endpoints
-- **wesign-client-DEV** (C:/Users/gals/Desktop/wesign-client-DEV): Frontend UI, React components, forms, pages, buttons, display logic
-- **wesignsigner-client-app-DEV** (C:/Users/gals/Desktop/wesignsigner-client-app-DEV): Document signing features, signatures, PDF handling, upload
+Available Repositories (for reference):
+- **user-backend**: Backend API, auth, database, getUserInfo, login
+- **wesign-client-DEV**: Frontend UI, React, forms, pages, buttons
+- **wesignsigner-client-app-DEV**: Document signing, PDF, upload
 
-Your task:
+Your approach:
 
-**STEP 1: Intelligent Repository Selection**
-Analyze the question keywords to determine the MOST RELEVANT repository:
+**ANALYZE the question keywords:**
+- Backend: API, server, database, login, "returns null", "API fails"
+- Frontend: UI, button, form, page, display, "button doesn't work"
+- Signing: signature, document, PDF, upload, "signature fails"
 
-Backend keywords (user-backend):
-- API, endpoint, server, backend, database
-- login, authentication, authorization, getUserInfo, session
-- "returns null", "API fails", "server error", "database query"
+**YOUR RESPONSE FORMAT** (friendly and readable):
 
-Frontend UI keywords (wesign-client-DEV):
-- UI, button, form, page, display, render, component
-- "button doesn't work", "form error", "page not loading"
+👋 Hey! I looked into this for you.
 
-Signing keywords (wesignsigner-client-app-DEV):
-- sign, signature, document, PDF, upload, download
-- "signature fails", "document upload", "PDF error"
+**What's happening:**
+[1-2 sentence summary in simple language]
 
-**STEP 2: Smart Search Strategy**
-- Search the MOST RELEVANT repo FIRST (not all repos at once)
-- This gives you faster, more focused results
-- Only search additional repos if needed (e.g., integration issues)
+**My analysis:**
+[Root cause hypothesis - be honest about confidence]
+**Confidence:** [0.75-1.0 as decimal]
 
-**STEP 3: Ask if Unclear**
-If you cannot determine which repo from keywords alone, respond:
-"To provide accurate analysis, I need clarification:
- - Is this a **UI/frontend** issue? (buttons, forms, display)
- - Is this a **backend/API** issue? (server, authentication, data)
- - Is this **document signing** specific? (signatures, PDF handling)
+**Why this happens:**
+[Explain the cause in plain language, use analogies if helpful]
 
-Please specify so I can search the right repository."
+**How to fix it:**
+1. [Specific step 1]
+2. [Specific step 2]
+3. [Specific step 3]
 
-**STEP 4: Comprehensive Analysis**
-Once you've searched the right repo(s), provide:
-- Root cause hypothesis
-- Confidence level (0-1, be honest about uncertainty)
-- Evidence (file paths + line numbers + code snippets from the repo you searched)
-- Fix suggestion
+**Code pointers** (if you found specific files):
+- \`path/to/file.ts:120\` - [what's there]
+- \`another/file.ts:45\` - [what's there]
 
-IMPORTANT: Return your analysis in this EXACT format:
+**If I can't access the code:**
+Still provide value! Share:
+- General guidance based on the error/symptom
+- Common causes for this type of issue
+- Questions to help narrow it down
+- Where to look (files, logs, areas of code)
 
-## Repository Search Strategy
-**Selected Repos:** [which repos you decided to search and why, e.g., "user-backend (keywords: API, getUserInfo)"]
+**Need more details?** Just let me know! 😊
 
-## Analysis
-
-**Hypothesis:** [your hypothesis in $Language]
-**Confidence:** [0.0-1.0 as decimal number]
-
-## Evidence
-
-1. ``path/to/file.ts:120-135``
-```
-[code snippet from selected repo]
-```
-
-2. ``another/file.ts:45-60``
-```
-[code snippet]
-```
-
-## Fix Suggestion
-
-[how to fix in $Language]
+REMEMBER: Be warm, conversational, and helpful. Never ask for permissions in chat!
 "@
 
     try {
         Write-Log "Invoking Claude Code v3 (Attempt $Attempt) with intelligent repo selection..."
-        $response = $prompt | claude --no-stream 2>&1
+        $response = $prompt | claude 2>&1
         return $response
     } catch {
         Write-Log "Error invoking Claude: $_" "ERROR"
@@ -282,13 +303,11 @@ IMPORTANT: Return your analysis in this EXACT format:
 
 # Function to send response to Teams (as thread reply)
 function Send-ToTeams {
-    param([string]$Channel, [string]$Message, [string]$ReplyToId)
-
-    $prompt = "Using the Teams MCP tools, send this message as a REPLY to message ID '$ReplyToId' in the '$Channel' channel:`n`n$Message"
+    param([string]$ChatId, [string]$Message, [string]$ReplyToId)
 
     try {
-        Write-Log "Sending reply to Teams (message ID: $ReplyToId)..."
-        $result = $prompt | claude --no-stream 2>&1
+        Write-Log "Sending reply to Teams chat (message ID: $ReplyToId)..."
+        $result = Send-TeamsChatMessage -ChatId $ChatId -Message $Message -ReplyToId $ReplyToId
         return $result
     } catch {
         Write-Log "Error sending to Teams: $_" "ERROR"
@@ -298,7 +317,7 @@ function Send-ToTeams {
 
 # Main polling loop
 Write-Log "Starting polling loop (interval: ${POLL_INTERVAL}s)"
-Write-Log "Monitoring channel: $CHANNEL_NAME"
+Write-Log "Monitoring group chat: $CHAT_NAME (ID: $CHAT_ID)"
 Write-Log "Only responding to @$BOT_NAME mentions"
 
 while ($true) {
@@ -306,38 +325,27 @@ while ($true) {
 
     $lastId = Get-LastMessageId
 
-    # Get new messages from Teams via Claude
-    $getMessagesPrompt = "Using the Teams MCP tools, get the latest 5 messages from the '$CHANNEL_NAME' channel. Return only the JSON array of messages with id, text, and from fields."
-
+    # Get new messages from Teams via Microsoft Graph API
     try {
-        $messagesJson = $getMessagesPrompt | claude --no-stream 2>&1
+        $messages = Get-TeamsChatMessages -ChatId $CHAT_ID -Top 5
 
-        if ([string]::IsNullOrWhiteSpace($messagesJson) -or $messagesJson -eq "null" -or $messagesJson -eq "[]") {
+        if ($null -eq $messages -or $messages.Count -eq 0) {
             Write-Log "No new messages"
-            Start-Sleep -Seconds $POLL_INTERVAL
-            continue
-        }
-
-        # Parse messages (assuming JSON array)
-        try {
-            $messages = $messagesJson | ConvertFrom-Json
-        } catch {
-            Write-Log "Failed to parse messages JSON: $_" "ERROR"
             Start-Sleep -Seconds $POLL_INTERVAL
             continue
         }
 
         foreach ($msg in $messages) {
             $msgId = $msg.id
-            $msgText = $msg.text
-            $msgFrom = $msg.from.name
+            $msgText = $msg.body.content
+            $msgFrom = if ($msg.from.user) { $msg.from.user.displayName } else { "Unknown" }
 
             # Skip if already processed
             if ($msgId -eq $lastId) {
                 continue
             }
 
-            Write-Log "New message from $msgFrom: $($msgText.Substring(0, [Math]::Min(50, $msgText.Length)))..."
+            Write-Log "New message from ${msgFrom}: $($msgText.Substring(0, [Math]::Min(50, $msgText.Length)))..."
 
             # Check if bot is mentioned
             $isMentioned = Test-BotMentioned $msgText
@@ -366,9 +374,9 @@ while ($true) {
             $finalAnalysis = ""
             $finalConfidence = 0.0
 
-            # Stability Loop with v3 intelligent repo selection
+            # Stability Loop with v4 humanized responses
             while ($attempt -le $MAX_ATTEMPTS) {
-                Write-Log "=== Analysis Attempt $attempt/$MAX_ATTEMPTS (v3: Intelligent Repo Selection) ===" "INFO"
+                Write-Log "=== Analysis Attempt $attempt/$MAX_ATTEMPTS (v4: Humanized Edition) ===" "INFO"
 
                 # Analyze with Claude Code v3
                 $analysis = Invoke-Analysis $cleanMessage $lang $attempt $lastHypothesis
@@ -405,13 +413,19 @@ while ($true) {
                 $finalAnalysis = $analysis
                 $finalConfidence = $currentConfidence
 
+                # FAST-FAIL: Check for access/permission errors
+                $isAccessError = Test-AccessError $analysis $currentHypothesis
+
                 # Check exit conditions
                 $done = ($stableCount -ge $STABLE_HASH_COUNT) -or
                         ($currentConfidence -ge $CONFIDENCE_THRESHOLD) -or
-                        ($attempt -ge $MAX_ATTEMPTS)
+                        ($attempt -ge $MAX_ATTEMPTS) -or
+                        ($isAccessError -and $attempt -ge 1)  # Exit immediately on access errors
 
                 if ($done) {
-                    $reason = if ($stableCount -ge $STABLE_HASH_COUNT) {
+                    $reason = if ($isAccessError -and $attempt -ge 1) {
+                        "Access error detected (fast-fail after attempt $attempt)"
+                    } elseif ($stableCount -ge $STABLE_HASH_COUNT) {
                         "Hypothesis stable ($stableCount consecutive)"
                     } elseif ($currentConfidence -ge $CONFIDENCE_THRESHOLD) {
                         "High confidence ($currentConfidence >= $CONFIDENCE_THRESHOLD)"
@@ -428,8 +442,8 @@ while ($true) {
             }
 
             # Send response to Teams (as thread reply)
-            Write-Log "Sending response to Teams..."
-            $sendResult = Send-ToTeams $CHANNEL_NAME $finalAnalysis $msgId
+            Write-Log "Sending response to Teams chat..."
+            $sendResult = Send-ToTeams $CHAT_ID $finalAnalysis $msgId
 
             if ($sendResult) {
                 Write-Log "Response sent successfully (Confidence: $finalConfidence, Attempts: $attempt)" "SUCCESS"

@@ -1,8 +1,21 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
+import fs from 'fs';
 
 const execAsync = promisify(exec);
+
+/**
+ * Get ripgrep command - checks for local rg.exe first, then PATH
+ */
+function getRipgrepCommand(): string {
+  // Check for local ripgrep in project directory
+  const localRg = path.join(__dirname, '..', 'rg.exe');
+  if (fs.existsSync(localRg)) {
+    return `"${localRg}"`;
+  }
+  return 'rg';
+}
 
 export interface SearchResult {
   path: string;
@@ -63,8 +76,8 @@ export async function searchCode(
 
   for (const root of repoRoots) {
     try {
-      // Check if ripgrep is available
-      const rgCommand = process.platform === 'win32' ? 'rg.exe' : 'rg';
+      // Get ripgrep command (local or PATH)
+      const rgCommand = getRipgrepCommand();
 
       const command = `${rgCommand} -i -n --json --max-count ${maxPerFile} --max-filesize 10M "${sanitizedQuery}" "${root}"`;
 
@@ -120,7 +133,7 @@ export async function searchCode(
  */
 export async function checkRipgrepInstalled(): Promise<boolean> {
   try {
-    const rgCommand = process.platform === 'win32' ? 'rg.exe' : 'rg';
+    const rgCommand = getRipgrepCommand();
     await execAsync(`${rgCommand} --version`, { timeout: 2000 });
     return true;
   } catch {

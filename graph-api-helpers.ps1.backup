@@ -1,0 +1,94 @@
+# Microsoft Graph API Helper Functions for Teams
+
+# Get authentication token from auth file
+function Get-GraphToken {
+    $authFile = "C:\Users\gals\.msgraph-mcp-auth.json"
+
+    if (-not (Test-Path $authFile)) {
+        throw "Auth file not found at $authFile"
+    }
+
+    $authData = Get-Content $authFile | ConvertFrom-Json
+    return $authData.token
+}
+
+# Get messages from a Teams chat
+function Get-TeamsChatMessages {
+    param(
+        [string]$ChatId,
+        [int]$Top = 5
+    )
+
+    try {
+        $token = Get-GraphToken
+        $headers = @{
+            "Authorization" = "Bearer $token"
+        }
+
+        $uri = "https://graph.microsoft.com/v1.0/chats/$ChatId/messages?`$top=$Top&`$orderby=createdDateTime desc"
+
+        # Force UTF-8 encoding for Hebrew and Unicode support
+        $response = Invoke-RestMethod -Uri $uri -Method Get -Headers $headers -ContentType "application/json; charset=utf-8"
+        return $response.value
+    } catch {
+        Write-Error "Failed to get chat messages: $_"
+        return $null
+    }
+}
+
+# Get current user ID (to identify bot's own messages)
+function Get-CurrentUserId {
+    try {
+        $token = Get-GraphToken
+        $headers = @{
+            "Authorization" = "Bearer $token"
+            "Content-Type" = "application/json"
+        }
+
+        $uri = "https://graph.microsoft.com/v1.0/me"
+
+        $response = Invoke-RestMethod -Uri $uri -Method Get -Headers $headers
+        return $response.id
+    } catch {
+        Write-Error "Failed to get current user ID: $_"
+        return $null
+    }
+}
+
+# Send message to Teams chat
+function Send-TeamsChatMessage {
+    param(
+        [string]$ChatId,
+        [string]$Message,
+        [string]$ReplyToId = $null
+    )
+
+    try {
+        $token = Get-GraphToken
+        $headers = @{
+            "Authorization" = "Bearer $token"
+        }
+
+        $body = @{
+            body = @{
+                content = $Message
+            }
+        }
+
+        # If replying to a message, add replyToId
+        if ($ReplyToId) {
+            $body.replyToId = $ReplyToId
+        }
+
+        $bodyJson = $body | ConvertTo-Json -Depth 3
+
+        $uri = "https://graph.microsoft.com/v1.0/chats/$ChatId/messages"
+
+        # Force UTF-8 encoding for Hebrew and Unicode support
+        $response = Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body ([System.Text.Encoding]::UTF8.GetBytes($bodyJson)) -ContentType "application/json; charset=utf-8"
+        return $response
+    } catch {
+        Write-Error "Failed to send chat message: $_"
+        return $null
+    }
+}

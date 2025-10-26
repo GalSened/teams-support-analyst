@@ -45,3 +45,7 @@ coverage/
 # Temporary files
 temp/
 tmp/
+
+# Authentication files
+.msgraph-auth-with-refresh.json
+*.auth.json

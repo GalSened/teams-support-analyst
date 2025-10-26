@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teams Support Analyst - Test UI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #667eea;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 1.1rem;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+
+        .panel h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+        }
+
+        .panel h2::before {
+            content: '';
+            width: 4px;
+            height: 24px;
+            background: #667eea;
+            margin-right: 12px;
+            border-radius: 2px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            color: #666;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        input[type="text"],
+        textarea,
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+            font-family: inherit;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-indicator.online {
+            background: #00d084;
+            box-shadow: 0 0 10px rgba(0, 208, 132, 0.5);
+        }
+
+        .status-indicator.offline {
+            background: #ff4444;
+            box-shadow: 0 0 10px rgba(255, 68, 68, 0.5);
+        }
+
+        .result-box {
+            background: #f7f9fb;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .result-box:empty::before {
+            content: 'Results will appear here...';
+            color: #999;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat-card {
+            background: #f7f9fb;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 0.9rem;
+            margin-top: 5px;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 Teams Support Analyst</h1>
+            <p class="subtitle">Test Interface for LocalSearch API</p>
+        </div>
+
+        <div class="main-content">
+            <!-- Search Panel -->
+            <div class="panel">
+                <h2>🔍 Code Search</h2>
+                <div class="form-group">
+                    <label for="searchQuery">Search Query</label>
+                    <input type="text" id="searchQuery" placeholder="e.g., getUserInfo, login, function" value="function">
+                </div>
+                <div class="form-group">
+                    <label for="maxResults">Max Results</label>
+                    <select id="maxResults">
+                        <option value="5">5 results</option>
+                        <option value="10" selected>10 results</option>
+                        <option value="20">20 results</option>
+                        <option value="50">50 results</option>
+                    </select>
+                </div>
+                <button onclick="performSearch()">Search Code</button>
+                <div id="searchResults" class="result-box"></div>
+            </div>
+
+            <!-- API Status Panel -->
+            <div class="panel">
+                <h2>📊 API Status</h2>
+                <div style="margin-bottom: 20px;">
+                    <span class="status-indicator" id="statusIndicator"></span>
+                    <span id="statusText">Checking...</span>
+                </div>
+                <button onclick="checkHealth()">Refresh Status</button>
+                <div id="healthResults" class="result-box"></div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="repoCount">-</div>
+                        <div class="stat-label">Repositories</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="lastCheck">-</div>
+                        <div class="stat-label">Last Check</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel" style="margin-top: 20px;">
+            <h2>📁 File Reader</h2>
+            <div class="form-group">
+                <label for="filePath">File Path</label>
+                <input type="text" id="filePath" placeholder="C:/path/to/file.ts">
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div class="form-group">
+                    <label for="startLine">Start Line</label>
+                    <input type="text" id="startLine" placeholder="1" value="1">
+                </div>
+                <div class="form-group">
+                    <label for="endLine">End Line</label>
+                    <input type="text" id="endLine" placeholder="50" value="50">
+                </div>
+            </div>
+            <button onclick="readFile()">Read File</button>
+            <div id="fileResults" class="result-box"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001';
+
+        async function performSearch() {
+            const query = document.getElementById('searchQuery').value;
+            const maxResults = parseInt(document.getElementById('maxResults').value);
+            const resultsDiv = document.getElementById('searchResults');
+
+            if (!query) {
+                resultsDiv.innerHTML = '<span style="color: red;">Please enter a search query</span>';
+                return;
+            }
+
+            resultsDiv.innerHTML = 'Searching<span class="loading"></span>';
+
+            try {
+                const response = await fetch(`${API_BASE}/search`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query, max_results: maxResults })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    let html = `<strong>Found ${data.count} results:</strong><br><br>`;
+                    data.results.forEach((result, idx) => {
+                        html += `<strong>${idx + 1}. ${result.path}:${result.line}</strong><br>`;
+                        html += `   ${result.text}<br><br>`;
+                    });
+                    resultsDiv.innerHTML = html || 'No results found';
+                } else {
+                    resultsDiv.innerHTML = `<span style="color: red;">Error: ${data.error}</span>`;
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `<span style="color: red;">Failed to connect to API: ${error.message}</span>`;
+            }
+        }
+
+        async function checkHealth() {
+            const statusIndicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            const resultsDiv = document.getElementById('healthResults');
+            const repoCount = document.getElementById('repoCount');
+            const lastCheck = document.getElementById('lastCheck');
+
+            statusText.textContent = 'Checking...';
+            statusIndicator.className = 'status-indicator';
+
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+
+                if (data.status === 'ok') {
+                    statusIndicator.className = 'status-indicator online';
+                    statusText.textContent = 'Online';
+
+                    let html = '<strong>API Health:</strong><br>';
+                    html += `Status: ${data.status}<br>`;
+                    html += `Ripgrep: ${data.ripgrep_installed ? '✓ Installed' : '✗ Not Found'}<br>`;
+                    html += `Repositories: ${data.repo_count}<br><br>`;
+                    html += '<strong>Monitored Repos:</strong><br>';
+                    data.repos.forEach(repo => {
+                        html += `• ${repo}<br>`;
+                    });
+
+                    resultsDiv.innerHTML = html;
+                    repoCount.textContent = data.repo_count;
+                    lastCheck.textContent = new Date().toLocaleTimeString();
+                } else {
+                    statusIndicator.className = 'status-indicator offline';
+                    statusText.textContent = 'Degraded';
+                    resultsDiv.innerHTML = `<span style="color: orange;">API Status: ${data.status}</span>`;
+                }
+            } catch (error) {
+                statusIndicator.className = 'status-indicator offline';
+                statusText.textContent = 'Offline';
+                resultsDiv.innerHTML = `<span style="color: red;">API is not responding</span>`;
+            }
+        }
+
+        async function readFile() {
+            const filePath = document.getElementById('filePath').value;
+            const start = parseInt(document.getElementById('startLine').value);
+            const end = parseInt(document.getElementById('endLine').value);
+            const resultsDiv = document.getElementById('fileResults');
+
+            if (!filePath) {
+                resultsDiv.innerHTML = '<span style="color: red;">Please enter a file path</span>';
+                return;
+            }
+
+            resultsDiv.innerHTML = 'Reading file<span class="loading"></span>';
+
+            try {
+                const response = await fetch(`${API_BASE}/file`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: filePath, start, end })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    let html = `<strong>File: ${data.path}</strong><br>`;
+                    html += `Lines ${data.start}-${data.end} (Total: ${data.totalLines})<br><br>`;
+                    html += `<pre>${data.snippet}</pre>`;
+                    resultsDiv.innerHTML = html;
+                } else {
+                    resultsDiv.innerHTML = `<span style="color: red;">Error: ${data.error}</span>`;
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `<span style="color: red;">Failed to read file: ${error.message}</span>`;
+            }
+        }
+
+        // Auto-check health on load
+        window.addEventListener('load', checkHealth);
+
+        // Allow Enter key to search
+        document.getElementById('searchQuery').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') performSearch();
+        });
+    </script>
+</body>
+</html>

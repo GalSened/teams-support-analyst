@@ -12,9 +12,11 @@ const app = express();
 const PORT = parseInt(process.env.LOCALSEARCH_PORT || '3001', 10);
 
 // Parse REPO_ROOTS from environment
+// Use semicolon (;) for Windows, colon (:) for Unix
 const repoRootsEnv = process.env.REPO_ROOTS || '';
+const separator = repoRootsEnv.includes(';') ? ';' : ':';
 const REPO_ROOTS = repoRootsEnv
-  .split(':')
+  .split(separator)
   .map(p => p.trim())
   .filter(p => p.length > 0);
 
