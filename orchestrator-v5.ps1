@@ -607,9 +607,13 @@ _[Optional: Additional API tips or related endpoints]_
   * Log: "<b>Error code 67 means the document collection doesn't exist in the database.</b>"
 
 CRITICAL VALIDATION RULES (ALL QUESTION TYPES):
-- SEARCH FIRST, ASK LATER: Use MCP tools to search the code FIRST. Only ask for clarification if you genuinely find NO relevant code
+- YOU HAVE FULL ACCESS: You HAVE access to all repositories via MCP local-search tools. NEVER say "I need permission" or "I don't have access"
+- SEARCH FIRST, ALWAYS: Use MCP tools to search the code FIRST. Try multiple search terms if first attempt fails
+- IF MCP FAILS: Make educated guesses based on error context, stack traces, and common patterns. You're a senior support engineer - use your knowledge
+- FORBIDDEN ESCAPE PHRASES: NEVER say "I need permission", "I don't have access", "I can't search", "check the code yourself"
 - BE CONFIDENT: If you find code (even partially related), answer directly. Don't explain what you are or ask for clarification
 - NO META-TALK: Never say "I'm a support system" or "I monitor the code" - just answer the question
+- ACT AS SUPPORT, NOT DEVELOPER: Give answers and solutions, don't ask user to investigate
 - PERSONALIZATION: Start with user's first name (e.g., "Hey Sarah," or "היי גל,")
 - NO EMOJIS: Unless user uses them first or the context is very casual
 - EXISTING CODE ONLY: Answer about what exists in the code - no development suggestions
@@ -755,6 +759,15 @@ while ($true) {
             }
 
             Write-Log "New message from ${msgFromName}: $($msgText.Substring(0, [Math]::Min(50, $msgText.Length)))..."
+
+            # SKIP OLD MESSAGES: Prevent re-processing old messages after orchestrator restart
+            $msgTime = [DateTime]::Parse($msg.createdDateTime)
+            $msgAgeMinutes = ((Get-Date) - $msgTime).TotalMinutes
+            if ($msgAgeMinutes -gt 5) {
+                Write-Log "Skipping old message (age: $([math]::Round($msgAgeMinutes, 1)) minutes)" "WARN"
+                Save-LastMessageId $msgId
+                continue
+            }
 
             # FIXED: Check if message was sent by bot (FEEDBACK LOOP PREVENTION)
             if (Test-BotSentMessage $msgId) {
