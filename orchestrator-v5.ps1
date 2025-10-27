@@ -267,6 +267,14 @@ function Save-UserReply {
     }
 }
 
+# Check if user is authorized to create JIRA tickets (SECURITY: Only Gal Sened)
+function Test-JiraAuthorized {
+    param([string]$UserName)
+
+    $authorizedUsers = @("Gal Sened")  # Only these users can create JIRA tickets
+    return $authorizedUsers -contains $UserName
+}
+
 # Check dependencies
 try {
     $null = Get-Command claude -ErrorAction Stop
@@ -798,6 +806,271 @@ function Send-ToTeams {
     }
 }
 
+# ═══════════════════════════════════════════════════════════════
+# JIRA TICKET CREATION FUNCTIONS
+# ═══════════════════════════════════════════════════════════════
+
+# Gather conversation context for JIRA ticket (all related messages)
+function Get-ConversationContext {
+    param(
+        [string]$ChatId,
+        [string]$CurrentMessageId
+    )
+
+    try {
+        Write-Log "Gathering conversation context for JIRA ticket..."
+
+        # Get last 20 messages to find related conversation
+        $messages = Get-TeamsChatMessages -ChatId $ChatId -Top 20
+
+        # Find messages related to current issue (not bot's own messages)
+        $context = @()
+        $foundCurrent = $false
+
+        foreach ($msg in $messages) {
+            # Stop when we reach the "create ticket" message
+            if ($msg.id -eq $CurrentMessageId) {
+                $foundCurrent = $true
+                break
+            }
+
+            # Skip bot's own messages
+            if (Test-BotSentMessage $msg.id) {
+                continue
+            }
+
+            # Add to context
+            $context += @{
+                From = $msg.from.user.displayName
+                Time = $msg.createdDateTime
+                Content = (Get-CleanMessage $msg.body.content)
+            }
+        }
+
+        # Return only the relevant messages (all related messages before "create ticket")
+        Write-Log "Found $($context.Count) relevant messages for ticket context"
+        return $context
+
+    } catch {
+        Write-Log "Error gathering context: $_" "ERROR"
+        return @()
+    }
+}
+
+# Analyze conversation to extract bug information
+function Extract-BugInfo {
+    param([array]$Context)
+
+    $allText = ($Context | ForEach-Object { $_.Content }) -join "`n`n"
+
+    # Extract error messages (lines with "error", "exception", "failed")
+    $errorLines = $allText -split "`n" | Where-Object {
+        $_ -match "error|exception|failed|invalid|not working|doesn't work|issue|problem"
+    }
+
+    # Extract URLs/endpoints (API calls, error logs)
+    $urls = [regex]::Matches($allText, 'https?://[^\s<>]+') | ForEach-Object { $_.Value }
+
+    # Extract error codes (e.g., "error 67", "code 404")
+    $errorCodes = [regex]::Matches($allText, '(error|code)\s*:?\s*(\d+)', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase) |
+                  ForEach-Object { $_.Value }
+
+    return @{
+        AllText = $allText
+        ErrorLines = ($errorLines -join "`n")
+        URLs = ($urls -join "`n")
+        ErrorCodes = ($errorCodes -join ", ")
+    }
+}
+
+# Helper function to call Claude CLI
+function Invoke-ClaudeAPI {
+    param(
+        [string]$Prompt,
+        [int]$MaxTokens = 500
+    )
+
+    try {
+        Write-Log "Calling Claude API..."
+
+        # Create temp file for prompt (handles multi-line better)
+        $tempFile = [System.IO.Path]::GetTempFileName()
+        Set-Content $tempFile $Prompt -Encoding UTF8
+
+        $response = claude --file $tempFile --max-tokens $MaxTokens 2>&1 | Out-String
+
+        # Clean up
+        Remove-Item $tempFile -ErrorAction SilentlyContinue
+
+        return $response.Trim()
+    } catch {
+        Write-Log "Claude API error: $_" "ERROR"
+        return ""
+    }
+}
+
+# Create JIRA ticket from Teams chat conversation
+function Create-JiraTicketFromChat {
+    param(
+        [string]$ChatId,
+        [string]$MessageId,
+        [string]$UserName
+    )
+
+    Write-Log "=== JIRA TICKET CREATION STARTED ===" "INFO"
+    Write-Log "Requested by: $UserName" "INFO"
+
+    # 1. Gather conversation context
+    $context = Get-ConversationContext -ChatId $ChatId -CurrentMessageId $MessageId
+    if ($context.Count -eq 0) {
+        Write-Log "No context found for ticket" "WARN"
+        $errorMsg = "❌ Couldn't gather conversation context. Please include error details in the chat first, then say 'create ticket'."
+        Send-ToTeams $ChatId $errorMsg $MessageId
+        return
+    }
+
+    # 2. Extract bug information
+    $bugInfo = Extract-BugInfo -Context $context
+
+    # 3. Generate ticket summary and priority using Claude
+    $analysisPrompt = @"
+Analyze this bug conversation and provide:
+1. A concise JIRA ticket title (max 80 chars) in format: [Component] - [What's broken] - [Error]
+2. Priority: High/Medium/Low based on:
+   - High: Production errors, data loss, security issues, blocking users
+   - Medium: Functional bugs, incorrect behavior, non-critical errors
+   - Low: UI issues, minor bugs, edge cases
+
+Conversation:
+$($bugInfo.AllText.Substring(0, [Math]::Min(1000, $bugInfo.AllText.Length)))
+
+Respond in this exact format:
+TITLE: your title here
+PRIORITY: High/Medium/Low
+"@
+
+    $analysis = Invoke-ClaudeAPI -Prompt $analysisPrompt -MaxTokens 150
+
+    # Parse Claude's response
+    $titleMatch = [regex]::Match($analysis, 'TITLE:\s*(.+)', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    $priorityMatch = [regex]::Match($analysis, 'PRIORITY:\s*(High|Medium|Low)', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+
+    $summary = if ($titleMatch.Success) { $titleMatch.Groups[1].Value.Trim() } else { "Bug reported from Teams chat" }
+    $priority = if ($priorityMatch.Success) { $priorityMatch.Groups[1].Value.Trim() } else { "Medium" }
+
+    Write-Log "Ticket Summary: $summary" "INFO"
+    Write-Log "Priority: $priority" "INFO"
+
+    # 4. Format description following JIRA best practices
+    $description = @"
+h2. Bug Report from Teams Chat
+*Reported by:* $UserName
+*Date:* $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+*Auto-assigned to:* Aviel Cohen
+
+h3. Description
+$($bugInfo.AllText)
+
+h3. Error Information
+{panel:title=Error Details|borderStyle=solid|borderColor=#ccc|titleBGColor=#F7D6C1|bgColor=#FFFFCE}
+$($bugInfo.ErrorLines)
+{panel}
+
+$(if ($bugInfo.ErrorCodes) { "*Error Codes:* " + $bugInfo.ErrorCodes + "`n" })
+$(if ($bugInfo.URLs) { "
+h3. Related URLs/Endpoints
+" + $bugInfo.URLs + "`n" })
+
+h3. Conversation Thread
+{code:title=Full Teams Conversation}
+$($context | ForEach-Object { "[$($_.Time)] $($_.From): $($_.Content)" } | Out-String)
+{code}
+
+h3. Steps to Reproduce
+_To be filled by developer_
+
+h3. Expected Behavior
+_To be filled by developer_
+
+h3. Actual Behavior
+_See error details and conversation above_
+
+---
+_This ticket was auto-created from Teams chat by @SupportBot_
+_Conversation reference: Message ID $MessageId_
+"@
+
+    # 5. Create JIRA ticket using MCP
+    try {
+        Write-Log "Calling Claude Code with JIRA MCP tool..." "INFO"
+
+        # JIRA Configuration
+        $projectKey = "WES"  # WeSign project
+        $assigneeEmail = "avielc@comda.co.il"  # Aviel Cohen
+        $labels = @("from-teams", "auto-created", "support-bot")
+
+        # Use Claude Code to create JIRA ticket via MCP
+        $jiraPrompt = @"
+Use the mcp__jira__create_issue tool to create a bug ticket with these exact details:
+
+projectKey: "$projectKey"
+issueType: "Bug"
+summary: "$summary"
+description: """
+$description
+"""
+fields: {
+    "assignee": {"emailAddress": "$assigneeEmail"},
+    "priority": {"name": "$priority"},
+    "labels": ["from-teams", "auto-created", "support-bot"]
+}
+
+After creating the ticket, respond with ONLY the issue key (e.g., "WES-123") and nothing else.
+"@
+
+        $issueKey = Invoke-ClaudeAPI -Prompt $jiraPrompt -MaxTokens 100
+        $issueKey = $issueKey.Trim() -replace '[^\w-]', ''  # Clean up response
+
+        if ($issueKey -match '^WES-\d+$') {
+            Write-Log "JIRA ticket created successfully: $issueKey" "SUCCESS"
+
+            # 6. Send confirmation to Teams
+            $jiraUrl = "https://comda.atlassian.net/browse/$issueKey"
+            $confirmMsg = @"
+<b>✅ JIRA ticket created successfully!</b>
+
+**Ticket:** <a href="$jiraUrl">$issueKey</a>
+**Summary:** $summary
+**Assigned to:** Aviel Cohen
+**Priority:** $priority
+
+The ticket includes all conversation context and error details.
+"@
+
+            Send-ToTeams $ChatId $confirmMsg $MessageId
+
+        } else {
+            throw "Invalid issue key returned: $issueKey"
+        }
+
+    } catch {
+        Write-Log "Failed to create JIRA ticket: $_" "ERROR"
+        $errorMsg = @"
+❌ Failed to create JIRA ticket.
+
+**Error:** $_
+
+Please create the ticket manually in JIRA with this info:
+**Summary:** $summary
+**Priority:** $priority
+**Assignee:** Aviel Cohen
+"@
+        Send-ToTeams $ChatId $errorMsg $MessageId
+    }
+
+    Write-Log "=== JIRA TICKET CREATION FINISHED ===" "INFO"
+}
+
 # Main polling loop
 Write-Log "Starting polling loop (interval: ${POLL_INTERVAL}s)"
 Write-Log "Monitoring group chat: $CHAT_NAME (ID: $CHAT_ID)"
@@ -867,6 +1140,28 @@ while ($true) {
             }
 
             Write-Log "Bot mentioned! Processing..." "SUCCESS"
+
+            # CHECK FOR JIRA TICKET CREATION COMMAND (before normal processing)
+            $cleanMsgText = Get-CleanMessage $msgText
+            $isTicketCommand = $cleanMsgText -match "create ticket|open ticket|file ticket"
+            if ($isTicketCommand) {
+                Write-Log "JIRA ticket creation command detected!" "INFO"
+
+                # Verify authorization (SECURITY: Only Gal Sened can create tickets)
+                if (-not (Test-JiraAuthorized $msgFromName)) {
+                    Write-Log "Unauthorized user tried to create ticket: $msgFromName" "WARN"
+                    $denyMsg = "🔒 Sorry, only Gal can create JIRA tickets from Teams chat."
+                    Send-ToTeams $CHAT_ID $denyMsg $msgId
+                    Save-LastMessageId $msgId
+                    continue
+                }
+
+                # Process ticket creation
+                Write-Log "Authorized user $msgFromName requesting ticket creation" "SUCCESS"
+                Create-JiraTicketFromChat -ChatId $CHAT_ID -MessageId $msgId -UserName $msgFromName
+                Save-LastMessageId $msgId
+                continue
+            }
 
             # CRITICAL: Check if we've already replied to this message (prevents duplicates from multiple instances)
             if (Test-AlreadyRepliedTo $msgId) {
