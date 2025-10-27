@@ -143,14 +143,14 @@ function Add-MessageReaction {
     param(
         [string]$ChatId,
         [string]$MessageId,
-        [string]$ReactionType = "like"  # like, heart, laugh, surprised, sad, angry
+        [string]$ReactionType = "👍"  # Unicode emoji: 👍, ❤️, 😂, 😮, 😢, 😠
     )
 
     try {
         $token = Get-GraphToken
         $headers = @{
             "Authorization" = "Bearer $token"
-            "Content-Type" = "application/json"
+            "Content-Type" = "application/json; charset=utf-8"
         }
 
         # Use the correct Microsoft Graph API endpoint for setting reactions
@@ -160,8 +160,8 @@ function Add-MessageReaction {
             reactionType = $ReactionType
         } | ConvertTo-Json
 
-        # Send POST request to set reaction
-        $response = Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $body
+        # Send POST request to set reaction (Force UTF-8 encoding for emoji)
+        $response = Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -ContentType "application/json; charset=utf-8"
         return $response
     } catch {
         Write-Host "Failed to add reaction: $($_.Exception.Message)" -ForegroundColor Yellow

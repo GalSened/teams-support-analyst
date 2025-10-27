@@ -227,13 +227,30 @@ function Test-BotMentioned {
     return $false
 }
 
-# Function to clean message text (remove @mention)
+# Function to clean message text (remove @mention and HTML)
 function Get-CleanMessage {
     param([string]$Text)
 
     # Remove @mentions
     $cleaned = $Text -replace '@\w+\s*', ''
     $cleaned = $cleaned -replace '<at>.*?</at>\s*', ''
+
+    # Remove all HTML tags (keep content between tags)
+    $cleaned = $cleaned -replace '<[^>]+>', ''
+
+    # Decode common HTML entities
+    $cleaned = $cleaned -replace '&nbsp;', ' '
+    $cleaned = $cleaned -replace '&lt;', '<'
+    $cleaned = $cleaned -replace '&gt;', '>'
+    $cleaned = $cleaned -replace '&amp;', '&'
+    $cleaned = $cleaned -replace '&quot;', '"'
+    $cleaned = $cleaned -replace '&#39;', "'"
+    $cleaned = $cleaned -replace '&apos;', "'"
+
+    # Remove excessive whitespace and newlines
+    $cleaned = $cleaned -replace '\s+', ' '
+    $cleaned = $cleaned -replace '\r\n', ' '
+    $cleaned = $cleaned -replace '\n', ' '
 
     # Trim whitespace
     $cleaned = $cleaned.Trim()
@@ -759,7 +776,7 @@ while ($true) {
 
             # Add 👍 reaction to show bot is processing (no chat clutter!)
             Write-Log "Adding reaction to show processing..."
-            $reactionResult = Add-MessageReaction -ChatId $CHAT_ID -MessageId $msgId -ReactionType "like"
+            $reactionResult = Add-MessageReaction -ChatId $CHAT_ID -MessageId $msgId
             if ($reactionResult) {
                 Write-Log "Reaction added successfully" "SUCCESS"
             } else {
