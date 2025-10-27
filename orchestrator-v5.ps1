@@ -67,10 +67,30 @@ if (Test-Path $LOCK_FILE) {
     }
 }
 
-# Create lock file with current PID
+# Create lock file with atomic check-and-set (prevents race conditions)
 try {
-    Set-Content $LOCK_FILE $PID -Force
+    # Try to create lock file exclusively (fails if exists) - atomic operation
+    $lockStream = [System.IO.File]::Open($LOCK_FILE, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+    $writer = New-Object System.IO.StreamWriter($lockStream)
+    $writer.Write($PID)
+    $writer.Close()
+    $lockStream.Close()
+
     Write-Host "✅ Process lock acquired (PID: $PID)" -ForegroundColor Green
+
+    # Verify we actually got the lock (paranoid check for race conditions)
+    Start-Sleep -Milliseconds 100
+    $verifyPid = Get-Content $LOCK_FILE
+    if ($verifyPid -ne $PID.ToString()) {
+        Write-Host "❌ Lock file race condition detected! Another process won." -ForegroundColor Red
+        Write-Host "Lock file PID: $verifyPid, Our PID: $PID" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "✅ Lock ownership verified" -ForegroundColor Green
+} catch [System.IO.IOException] {
+    Write-Host "❌ Lock file already exists - another orchestrator is running" -ForegroundColor Red
+    Write-Host "Use .\restart-orchestrator-clean.ps1 to restart" -ForegroundColor Yellow
+    exit 1
 } catch {
     Write-Host "❌ Failed to create lock file: $_" -ForegroundColor Red
     exit 1
@@ -92,6 +112,7 @@ $null = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action {
 $POLL_INTERVAL = 10  # seconds
 $STATE_FILE = "./state/last_message_id.txt"
 $BOT_MESSAGES_FILE = "./state/bot_sent_messages.json"  # Track message IDs sent by bot
+$USER_REPLIES_FILE = "./state/user_replies.json"  # Track which user messages we've replied to
 $ANALYSIS_STATE_FILE = "./state/analysis_state.json"
 $LOG_FILE = "./logs/orchestrator.log"
 $CHAT_ID = if ($env:TEAMS_CHAT_ID) { $env:TEAMS_CHAT_ID } else { "" }
@@ -194,6 +215,55 @@ function Save-BotSentMessage {
         Write-Log "Saved bot message ID: $MessageId"
     } catch {
         Write-Log "Error saving bot message ID: $_" "WARN"
+    }
+}
+
+# Check if we've already replied to a user message (CRITICAL: Prevents duplicate responses from multiple instances)
+function Test-AlreadyRepliedTo {
+    param([string]$UserMessageId)
+
+    if (-not (Test-Path $USER_REPLIES_FILE)) {
+        @{} | ConvertTo-Json | Set-Content $USER_REPLIES_FILE
+        return $false
+    }
+
+    try {
+        $replies = Get-Content $USER_REPLIES_FILE | ConvertFrom-Json
+        return $replies.PSObject.Properties.Name -contains $UserMessageId
+    } catch {
+        Write-Log "Error reading user replies file: $_" "WARN"
+        return $false
+    }
+}
+
+# Save that we've replied to a user message (CRITICAL: Mark message as handled before processing)
+function Save-UserReply {
+    param([string]$UserMessageId)
+
+    try {
+        $replies = @{}
+        if (Test-Path $USER_REPLIES_FILE) {
+            $jsonObj = Get-Content $USER_REPLIES_FILE | ConvertFrom-Json
+            foreach ($property in $jsonObj.PSObject.Properties) {
+                $replies[$property.Name] = $property.Value
+            }
+        }
+
+        # Add new reply with timestamp
+        $replies[$UserMessageId] = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+
+        # Keep only last 50 replies to prevent file from growing too large
+        if ($replies.Count -gt 50) {
+            $sortedKeys = $replies.GetEnumerator() | Sort-Object Value | Select-Object -First ($replies.Count - 50) | ForEach-Object { $_.Key }
+            foreach ($key in $sortedKeys) {
+                $replies.Remove($key)
+            }
+        }
+
+        $replies | ConvertTo-Json | Set-Content $USER_REPLIES_FILE
+        Write-Log "Saved user reply tracking for message: $UserMessageId" "SUCCESS"
+    } catch {
+        Write-Log "Error saving user reply: $_" "WARN"
     }
 }
 
@@ -736,6 +806,18 @@ Write-Log "Will respond to @$BOT_NAME mentions only (message ID tracking prevent
 while ($true) {
     Write-Log "Checking for new messages..."
 
+    # SAFETY: Verify we still own the lock (detect if another instance took over)
+    if (Test-Path $LOCK_FILE) {
+        $currentLockPid = Get-Content $LOCK_FILE -ErrorAction SilentlyContinue
+        if ($currentLockPid -ne $PID.ToString()) {
+            Write-Log "FATAL: Lock file PID changed from $PID to $currentLockPid! Another instance took over. Exiting..." "ERROR"
+            exit 1
+        }
+    } else {
+        Write-Log "FATAL: Lock file disappeared! Exiting gracefully..." "ERROR"
+        exit 1
+    }
+
     $lastId = Get-LastMessageId
 
     # Get new messages from Teams via Microsoft Graph API
@@ -785,6 +867,17 @@ while ($true) {
             }
 
             Write-Log "Bot mentioned! Processing..." "SUCCESS"
+
+            # CRITICAL: Check if we've already replied to this message (prevents duplicates from multiple instances)
+            if (Test-AlreadyRepliedTo $msgId) {
+                Write-Log "Already replied to this user message (duplicate prevention - multiple instances running)" "WARN"
+                Save-LastMessageId $msgId
+                continue
+            }
+
+            # Mark as processing IMMEDIATELY (before analysis starts) - prevents race condition
+            Save-UserReply $msgId
+            Write-Log "Marked message as being processed (reply tracking)" "SUCCESS"
 
             # Save message ID immediately to prevent duplicate processing
             Save-LastMessageId $msgId
