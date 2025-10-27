@@ -487,7 +487,7 @@ $(
 @"
 היי $UserName,
 
-[Direct answer with specific API/method/function name - 1 sentence]
+<b>[Direct answer with specific API/method/function name - 1 sentence - BOLD THIS]</b>
 [Where to find it: file:line - 1 sentence]
 [Basic code example or usage pattern - 1-2 sentences]
 
@@ -497,7 +497,7 @@ _[Optional: One-line offer about related functionality in existing code]_
 @"
 Hey $UserName,
 
-[Direct answer with specific API/method/function name - 1 sentence]
+<b>[Direct answer with specific API/method/function name - 1 sentence - BOLD THIS]</b>
 [Where to find it: file:line - 1 sentence]
 [Basic code example or usage pattern - 1-2 sentences]
 
@@ -511,7 +511,7 @@ _[Optional: One-line offer about related functionality in existing code]_
 היי $UserName,
 
 ## מה קורה
-[What's happening in simple terms - 1 sentence]
+<b>[What's happening in simple terms - 1 sentence - BOLD THIS]</b>
 
 ## למה זה קורה
 [Root cause explanation - 1-2 sentences]
@@ -528,7 +528,7 @@ _[Optional: Prevention tip or related info]_
 Hey $UserName,
 
 ## What's Happening
-[What's happening in simple terms - 1 sentence]
+<b>[What's happening in simple terms - 1 sentence - BOLD THIS]</b>
 
 ## Why It Happens
 [Root cause explanation - 1-2 sentences]
@@ -547,7 +547,7 @@ _[Optional: Prevention tip or related info]_
 @"
 היי $UserName,
 
-[Error interpretation - what it means - 1 sentence]
+<b>[Error interpretation - what it means - 1 sentence - BOLD THIS]</b>
 [Exact location: file:line where the error originates - 1 sentence]
 [Quick fix action - what to do right now - 1 sentence]
 
@@ -557,7 +557,7 @@ _[Optional: Want to understand the root cause?]_
 @"
 Hey $UserName,
 
-[Error interpretation - what it means - 1 sentence]
+<b>[Error interpretation - what it means - 1 sentence - BOLD THIS]</b>
 [Exact location: file:line where the error originates - 1 sentence]
 [Quick fix action - what to do right now - 1 sentence]
 
@@ -570,7 +570,7 @@ _[Optional: Want to understand the root cause?]_
 @"
 היי $UserName,
 
-[API endpoint description - what it does - 1 sentence]
+<b>[API endpoint description - what it does - 1 sentence - BOLD THIS]</b>
 [Exact endpoint and HTTP method - e.g., POST /api/documents - 1 sentence]
 [Request format with required fields - 1-2 sentences]
 [Response format - what you'll get back - 1 sentence]
@@ -582,7 +582,7 @@ _[Optional: Additional API tips or related endpoints]_
 @"
 Hey $UserName,
 
-[API endpoint description - what it does - 1 sentence]
+<b>[API endpoint description - what it does - 1 sentence - BOLD THIS]</b>
 [Exact endpoint and HTTP method - e.g., POST /api/documents - 1 sentence]
 [Request format with required fields - 1-2 sentences]
 [Response format - what you'll get back - 1 sentence]
@@ -595,6 +595,16 @@ _[Optional: Additional API tips or related endpoints]_
     }
 )
 --- USER RESPONSE END ---
+
+**FORMATTING RULES - BOLD THE KEY ANSWER:**
+- Use <b></b> HTML tags to bold the MOST IMPORTANT sentence
+- Bold the core answer, root cause, or solution - the #1 critical information
+- Only bold ONE sentence per response (the absolute most critical)
+- Examples:
+  * Error: "<b>This error occurs when the document collection ID is invalid or deleted.</b>"
+  * API: "<b>The isHidden field is in DocumentCollection.cs:45 and controls visibility.</b>"
+  * How-to: "<b>To export metrics, use ExportService.GenerateReport() at Services/ExportService.cs:78.</b>"
+  * Log: "<b>Error code 67 means the document collection doesn't exist in the database.</b>"
 
 CRITICAL VALIDATION RULES (ALL QUESTION TYPES):
 - SEARCH FIRST, ASK LATER: Use MCP tools to search the code FIRST. Only ask for clarification if you genuinely find NO relevant code
@@ -774,8 +784,8 @@ while ($true) {
             $lang = Detect-Language $cleanMessage
             Write-Log "Detected language: $lang"
 
-            # Add 👍 reaction to show bot is processing (no chat clutter!)
-            Write-Log "Adding reaction to show processing..."
+            # Add 👀 reaction to show bot is processing (no chat clutter!)
+            Write-Log "Adding 👀 reaction to show processing..."
             $reactionResult = Add-MessageReaction -ChatId $CHAT_ID -MessageId $msgId
             if ($reactionResult) {
                 Write-Log "Reaction added successfully" "SUCCESS"

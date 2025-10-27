@@ -116,6 +116,7 @@ function Send-TeamsChatMessage {
 
         $body = @{
             body = @{
+                contentType = "html"
                 content = $Message
             }
         }
