@@ -143,7 +143,7 @@ function Add-MessageReaction {
     param(
         [string]$ChatId,
         [string]$MessageId,
-        [string]$ReactionType = "👍"  # Unicode emoji: 👍, ❤️, 😂, 😮, 😢, 😠
+        [string]$ReactionType = "👀"  # Unicode emoji: 👀, 👍, ❤️, 😂, 😮, 😢, 😠
     )
 
     try {
