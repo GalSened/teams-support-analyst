@@ -153,13 +153,19 @@ function Add-MessageReaction {
             "Content-Type" = "application/json"
         }
 
-        $uri = "https://graph.microsoft.com/v1.0/chats/$ChatId/messages/$MessageId/reactions"
+        # Use the correct Microsoft Graph API endpoint for setting reactions
+        $uri = "https://graph.microsoft.com/v1.0/chats/$ChatId/messages/$MessageId/setReaction"
 
-        # Send POST request to add reaction
-        $response = Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body "{`"reactionType`": `"$ReactionType`"}"
+        $body = @{
+            reactionType = $ReactionType
+        } | ConvertTo-Json
+
+        # Send POST request to set reaction
+        $response = Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $body
         return $response
     } catch {
-        Write-Error "Failed to add reaction: $_"
+        Write-Host "Failed to add reaction: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host "Error details: $_" -ForegroundColor Yellow
         return $null
     }
 }
