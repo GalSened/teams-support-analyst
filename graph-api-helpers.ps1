@@ -137,3 +137,29 @@ function Send-TeamsChatMessage {
         return $null
     }
 }
+
+# Add a reaction to a Teams message
+function Add-MessageReaction {
+    param(
+        [string]$ChatId,
+        [string]$MessageId,
+        [string]$ReactionType = "like"  # like, heart, laugh, surprised, sad, angry
+    )
+
+    try {
+        $token = Get-GraphToken
+        $headers = @{
+            "Authorization" = "Bearer $token"
+            "Content-Type" = "application/json"
+        }
+
+        $uri = "https://graph.microsoft.com/v1.0/chats/$ChatId/messages/$MessageId/reactions"
+
+        # Send POST request to add reaction
+        $response = Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body "{`"reactionType`": `"$ReactionType`"}"
+        return $response
+    } catch {
+        Write-Error "Failed to add reaction: $_"
+        return $null
+    }
+}

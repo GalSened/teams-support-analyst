@@ -746,6 +746,9 @@ while ($true) {
 
             Write-Log "Bot mentioned! Processing..." "SUCCESS"
 
+            # Save message ID immediately to prevent duplicate processing
+            Save-LastMessageId $msgId
+
             # Clean message (remove @mention)
             $cleanMessage = Get-CleanMessage $msgText
             Write-Log "Clean message: $($cleanMessage.Substring(0, [Math]::Min(50, $cleanMessage.Length)))..."
@@ -754,20 +757,15 @@ while ($true) {
             $lang = Detect-Language $cleanMessage
             Write-Log "Detected language: $lang"
 
-            # Send immediate acknowledgment to Teams (Hebrew or English)
-            Write-Log "Sending acknowledgment to Teams..."
-            $ackMessage = if ($lang -eq "he") {
-                "רגע, בודק..."
+            # Add 👍 reaction to show bot is processing (no chat clutter!)
+            Write-Log "Adding reaction to show processing..."
+            $reactionResult = Add-MessageReaction -ChatId $CHAT_ID -MessageId $msgId -ReactionType "like"
+            if ($reactionResult) {
+                Write-Log "Reaction added successfully" "SUCCESS"
             } else {
-                "Looking into it..."
+                Write-Log "Failed to add reaction (continuing anyway...)" "WARN"
             }
-            $ackResult = Send-ToTeams $CHAT_ID $ackMessage $msgId
-            if ($ackResult) {
-                Write-Log "Acknowledgment sent successfully" "SUCCESS"
-            } else {
-                Write-Log "Failed to send acknowledgment (continuing anyway...)" "WARN"
-            }
-            Write-Log "Acknowledgment sent - proceeding to analysis"
+            Write-Log "Reaction added - proceeding to analysis"
 
             # Initialize analysis state for stability loop
             $attempt = 1
@@ -865,10 +863,10 @@ while ($true) {
                 Write-Log "Failed to send response" "ERROR"
             }
 
-            # Save last processed message ID
-            Save-LastMessageId $msgId
-
             Write-Log "==================================="
+
+            # Process only ONE message per poll cycle to avoid overwhelming the chat
+            break
         }
     } catch {
         Write-Log "Error in polling loop: $_" "ERROR"
